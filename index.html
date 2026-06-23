@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shape10X — Health Check</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;font-family:'DM Sans',sans-serif;color:#f0f0f0;min-height:100vh}
+a{text-decoration:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useEffect,useCallback,createElement:h} = React;
+
+const SUPABASE_URL='https://bvwezccsmwqckvrzfdmi.supabase.co';
+const SUPABASE_KEY='sb_publishable_xHka2lWGExU746oT6B92QQ_img6OkB-';
+const GABRIEL_ID='774bc8e5-6273-4a86-9bcd-9ea5c013803d';
+
+const URLS={
+  painel:'https://shape10x-painel.vercel.app',
+  portal:'https://shape10x-portal.vercel.app',
+  avaliacao:'https://shape10x-avaliacao.vercel.app',
+  'portal Gabriel':'https://shape10x-portal.vercel.app/gabriel-vernetti.html',
+};
+
+const TESTES=[
+  {id:'db_alunos',label:'Banco — alunos',grupo:'🗄️ Banco'},
+  {id:'db_treinos',label:'Banco — treinos',grupo:'🗄️ Banco'},
+  {id:'db_checkins',label:'Banco — check_ins',grupo:'🗄️ Banco'},
+  {id:'db_cargas',label:'Banco — cargas',grupo:'🗄️ Banco'},
+  {id:'db_dieta',label:'Banco — dieta',grupo:'🗄️ Banco'},
+  {id:'db_revisoes',label:'Banco — revisoes_mensais',grupo:'🗄️ Banco'},
+  {id:'db_feedbacks',label:'Banco — feedbacks_semanais',grupo:'🗄️ Banco'},
+  {id:'gabriel_treino',label:'Gabriel — treino ativo',grupo:'👤 Alunos'},
+  {id:'gabriel_dieta',label:'Gabriel — dieta ativa',grupo:'👤 Alunos'},
+  {id:'gabriel_checkins',label:'Gabriel — check-ins registrados',grupo:'👤 Alunos'},
+  {id:'semaforo',label:'Semáforo — lógica verde/vermelho',grupo:'⚙️ Fluxos'},
+  {id:'carga_upsert',label:'Cargas — upsert sem duplicar',grupo:'⚙️ Fluxos'},
+  {id:'checkin_upsert',label:'Check-in — mesmo dia não duplica',grupo:'⚙️ Fluxos'},
+  {id:'val_peso',label:'Validação — peso inválido rejeitado',grupo:'⚙️ Fluxos'},
+  {id:'val_sono',label:'Validação — sono inválido rejeitado',grupo:'⚙️ Fluxos'},
+  {id:'val_dieta',label:'Validação — dieta % inválido rejeitado',grupo:'⚙️ Fluxos'},
+];
+
+async function dbQuery(table,filter={},opts={}){
+  const p=new URLSearchParams({select:opts.select||'*',...filter});
+  if(opts.order)p.append('order',opts.order);
+  if(opts.limit)p.append('limit',String(opts.limit));
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/${table}?${p}`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});
+  if(!r.ok)throw new Error(`HTTP ${r.status} em ${table}`);
+  return r.json();
+}
+async function dbInsert(table,row){
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/${table}`,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify(row)});
+  return{ok:r.ok,status:r.status};
+}
+async function dbDelete(table,filter){
+  const p=new URLSearchParams(filter);
+  await fetch(`${SUPABASE_URL}/rest/v1/${table}?${p}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}});
+}
+
+async function runTest(id){
+  try{
+    switch(id){
+      case 'db_alunos':{const d=await dbQuery('alunos',{},{limit:1});return{ok:true,msg:`${d.length>0?d[0].nome:'—'} acessível`};}
+      case 'db_treinos':{const d=await dbQuery('treinos',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'db_checkins':{const d=await dbQuery('check_ins',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'db_cargas':{const d=await dbQuery('cargas',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'db_dieta':{const d=await dbQuery('dieta',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'db_revisoes':{const d=await dbQuery('revisoes_mensais',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'db_feedbacks':{const d=await dbQuery('feedbacks_semanais',{},{limit:1});return{ok:true,msg:`${d.length} reg`};}
+      case 'gabriel_treino':{const d=await dbQuery('treinos',{'aluno_id':`eq.${GABRIEL_ID}`,'ativo':'eq.true'},{limit:1});if(!d.length)return{ok:false,msg:'Sem treino ativo'};return{ok:true,msg:d[0].protocolo};}
+      case 'gabriel_dieta':{const d=await dbQuery('dieta',{'aluno_id':`eq.${GABRIEL_ID}`,'ativo':'eq.true'},{limit:1});if(!d.length)return{ok:false,msg:'Sem dieta ativa'};return{ok:true,msg:`${d[0].calorias_total}kcal`};}
+      case 'gabriel_checkins':{const d=await dbQuery('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`},{order:'data.desc',limit:3});if(!d.length)return{ok:false,msg:'Sem check-ins'};return{ok:true,msg:`${d.length} recentes — último ${d[0].data}`};}
+      case 'semaforo':{const d=await dbQuery('alunos',{},{ select:'nome,semaforo'});const sem=d.map(a=>`${a.nome?.split(' ')[0]}:${a.semaforo}`).join(' | ');return{ok:true,msg:sem};}
+      case 'carga_upsert':{
+        const k={aluno_id:GABRIEL_ID,exercicio_nome:'__hc__',semana:99};
+        await dbInsert('cargas',{...k,carga:'10kg',data:'2099-01-01'});
+        await fetch(`${SUPABASE_URL}/rest/v1/cargas?aluno_id=eq.${GABRIEL_ID}&exercicio_nome=eq.__hc__&semana=eq.99`,{method:'PATCH',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({carga:'20kg'})});
+        const d=await dbQuery('cargas',{'aluno_id':`eq.${GABRIEL_ID}`,'exercicio_nome':'eq.__hc__'});
+        await dbDelete('cargas',{'aluno_id':`eq.${GABRIEL_ID}`,'exercicio_nome':'eq.__hc__'});
+        if(d.length>1)return{ok:false,msg:`Duplicou: ${d.length} registros`};
+        return{ok:true,msg:'Insert→update sem duplicar'};
+      }
+      case 'checkin_upsert':{
+        const dt='2099-12-30';
+        await dbInsert('check_ins',{aluno_id:GABRIEL_ID,data:dt,fez_treino:false,agua:false,meta_passos:false,cardio:false,dieta_percentual:100,sono_horas:8,peso_kg:80});
+        await dbInsert('check_ins',{aluno_id:GABRIEL_ID,data:dt,fez_treino:true,agua:true,meta_passos:true,cardio:true,dieta_percentual:100,sono_horas:8,peso_kg:80});
+        const d=await dbQuery('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`,'data':`eq.${dt}`});
+        await dbDelete('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`,'data':`eq.${dt}`});
+        if(d.length>1)return{ok:false,msg:`Duplicou: ${d.length}`};
+        return{ok:true,msg:'Mesmo dia não duplica'};
+      }
+      case 'val_peso':{const r=await dbInsert('check_ins',{aluno_id:GABRIEL_ID,data:'2099-11-01',peso_kg:-5,dieta_percentual:100,sono_horas:8});if(r.ok){await dbDelete('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`,'data':'eq.2099-11-01'});return{ok:false,msg:'FALHA: peso negativo aceito'};}return{ok:true,msg:'Peso inválido rejeitado'};}
+      case 'val_sono':{const r=await dbInsert('check_ins',{aluno_id:GABRIEL_ID,data:'2099-11-02',sono_horas:30,dieta_percentual:100,peso_kg:80});if(r.ok){await dbDelete('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`,'data':'eq.2099-11-02'});return{ok:false,msg:'FALHA: sono 30h aceito'};}return{ok:true,msg:'Sono inválido rejeitado'};}
+      case 'val_dieta':{const r=await dbInsert('check_ins',{aluno_id:GABRIEL_ID,data:'2099-11-03',dieta_percentual:33,sono_horas:8,peso_kg:80});if(r.ok){await dbDelete('check_ins',{'aluno_id':`eq.${GABRIEL_ID}`,'data':'eq.2099-11-03'});return{ok:false,msg:'FALHA: dieta 33% aceito'};}return{ok:true,msg:'Dieta % inválido rejeitado'};}
+      default:return{ok:false,msg:'Teste desconhecido'};
+    }
+  }catch(e){return{ok:false,msg:e.message};}
+}
+
+function App(){
+  const[res,setRes]=useState({});
+  const[rodando,setRodando]=useState(false);
+  const[ultima,setUltima]=useState(null);
+  const[auto,setAuto]=useState(false);
+  const[intervalo,setIntervalo]=useState('1h');
+
+  const rodar=useCallback(async()=>{
+    setRodando(true);
+    const novo={};
+    for(const t of TESTES){
+      novo[t.id]={status:'rodando'};
+      setRes({...novo});
+      const r=await runTest(t.id);
+      novo[t.id]={status:r.ok?'ok':'erro',msg:r.msg};
+      setRes({...novo});
+    }
+    setUltima(new Date());
+    setRodando(false);
+  },[]);
+
+  useEffect(()=>{rodar();},[]);
+
+  useEffect(()=>{
+    if(!auto)return;
+    const ms=intervalo==='1h'?3600000:intervalo==='6h'?21600000:86400000;
+    const iv=setInterval(rodar,ms);
+    return()=>clearInterval(iv);
+  },[auto,intervalo,rodar]);
+
+  const grupos=[...new Set(TESTES.map(t=>t.grupo))];
+  const ok=Object.values(res).filter(r=>r?.status==='ok').length;
+  const erros=Object.values(res).filter(r=>r?.status==='erro').length;
+  const total=TESTES.length;
+  const score=total>0?Math.round(ok/total*100):0;
+  const corScore=score===100?'#3ecf8e':score>=70?'#D4A843':'#f87171';
+
+  const S={
+    page:{background:'#0a0a0a',minHeight:'100vh',padding:'20px',maxWidth:480,margin:'0 auto'},
+    header:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20},
+    logo:{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:2,color:'#D4A843'},
+    sub:{fontSize:10,color:'#555',marginTop:2,letterSpacing:1,textTransform:'uppercase'},
+    score:{textAlign:'right'},
+    scoreVal:{fontSize:40,fontWeight:900,color:corScore,lineHeight:1},
+    scoreSub:{fontSize:10,color:'#555',marginTop:2},
+    bar:{height:5,background:'#1a1a1a',borderRadius:3,marginBottom:18,overflow:'hidden'},
+    barFill:{height:'100%',width:`${score}%`,background:corScore,borderRadius:3,transition:'width 0.6s'},
+    kpiGrid:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:16},
+    kpi:{background:'#111',border:'1px solid #1e1e1e',borderRadius:10,padding:'12px 8px',textAlign:'center'},
+    kpiVal:{fontSize:22,fontWeight:900},
+    kpiLabel:{fontSize:9,color:'#555',marginTop:2,textTransform:'uppercase',letterSpacing:0.5},
+    linksCard:{background:'#111',border:'1px solid #1e1e1e',borderRadius:12,padding:'14px 16px',marginBottom:14},
+    linksTitle:{fontSize:10,fontWeight:700,color:'#555',textTransform:'uppercase',letterSpacing:1,marginBottom:10},
+    linkRow:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:'1px solid #161616'},
+    linkLabel:{fontSize:11,color:'#777',textTransform:'capitalize'},
+    linkHref:{fontSize:11,color:'#D4A843',fontWeight:600},
+    grupoCard:{background:'#111',border:'1px solid #1e1e1e',borderRadius:12,padding:'14px 16px',marginBottom:10},
+    grupoTitle:{fontSize:10,fontWeight:700,color:'#555',textTransform:'uppercase',letterSpacing:1,marginBottom:10},
+    testeRow:{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',borderBottom:'1px solid #161616'},
+    testeIcon:{fontSize:14,flexShrink:0,marginTop:1,width:18},
+    testeLabel:{fontSize:12,fontWeight:500,color:'#ddd'},
+    testeMsg:{fontSize:10,marginTop:2},
+    actions:{display:'flex',gap:8,marginTop:16,marginBottom:8},
+    btnPrimary:{flex:1,padding:'14px',background:rodando?'#161616':'#D4A843',color:rodando?'#555':'#000',border:'none',borderRadius:12,fontSize:13,fontWeight:700,cursor:rodando?'not-allowed':'pointer',fontFamily:"'DM Sans',sans-serif"},
+    btnSecondary:{padding:'14px 12px',background:auto?'rgba(62,207,142,0.12)':'#161616',color:auto?'#3ecf8e':'#666',border:`1px solid ${auto?'rgba(62,207,142,0.25)':'#222'}`,borderRadius:12,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif",whiteSpace:'nowrap'},
+    footer:{textAlign:'center',fontSize:10,color:'#333',marginTop:12},
+  };
+
+  return h('div',{style:S.page},
+    // Header
+    h('div',{style:S.header},
+      h('div',null,
+        h('div',{style:S.logo},'SHAPE10X'),
+        h('div',{style:S.sub},'Agente de Verificação')
+      ),
+      h('div',{style:S.score},
+        h('div',{style:S.scoreVal},score+'%'),
+        h('div',{style:S.scoreSub},`${ok}/${total} ok`)
+      )
+    ),
+    // Barra
+    h('div',{style:S.bar}, h('div',{style:S.barFill})),
+    // KPIs
+    h('div',{style:S.kpiGrid},
+      h('div',{style:S.kpi}, h('div',{style:{...S.kpiVal,color:'#3ecf8e'}},ok), h('div',{style:S.kpiLabel},'✅ Ok')),
+      h('div',{style:S.kpi}, h('div',{style:{...S.kpiVal,color:'#f87171'}},erros), h('div',{style:S.kpiLabel},'❌ Erros')),
+      h('div',{style:S.kpi}, h('div',{style:{...S.kpiVal,color:'#D4A843'}},Object.values(res).filter(r=>r?.status==='rodando').length), h('div',{style:S.kpiLabel},'⏳ Rodando')),
+    ),
+    // Links
+    h('div',{style:S.linksCard},
+      h('div',{style:S.linksTitle},'🔗 Links da Plataforma'),
+      ...Object.entries(URLS).map(([k,url])=>
+        h('div',{style:S.linkRow,key:k},
+          h('span',{style:S.linkLabel},k),
+          h('a',{href:url,target:'_blank',style:S.linkHref},url.replace('https://','').slice(0,40)+' →')
+        )
+      )
+    ),
+    // Testes por grupo
+    ...grupos.map(grupo=>
+      h('div',{style:S.grupoCard,key:grupo},
+        h('div',{style:S.grupoTitle},grupo),
+        ...TESTES.filter(t=>t.grupo===grupo).map((teste,i,arr)=>{
+          const r=res[teste.id];
+          const status=r?.status||'pendente';
+          const icone=status==='ok'?'✅':status==='erro'?'❌':status==='rodando'?'⏳':'○';
+          const corMsg=status==='ok'?'#3ecf8e':status==='erro'?'#f87171':status==='rodando'?'#D4A843':'#444';
+          return h('div',{style:{...S.testeRow,borderBottom:i===arr.length-1?'none':'1px solid #161616'},key:teste.id},
+            h('span',{style:S.testeIcon},icone),
+            h('div',{style:{flex:1}},
+              h('div',{style:S.testeLabel},teste.label),
+              r?.msg?h('div',{style:{...S.testeMsg,color:corMsg}},r.msg):null
+            )
+          );
+        })
+      )
+    ),
+    // Ações
+    h('div',{style:S.actions},
+      h('button',{style:S.btnPrimary,onClick:rodar,disabled:rodando},rodando?'⏳ Verificando...':'▶ Verificar agora'),
+      h('button',{style:S.btnSecondary,onClick:()=>setAuto(a=>!a)},auto?'🔁 Auto ON':'🔁 Auto OFF')
+    ),
+    // Intervalo
+    auto?h('div',{style:{display:'flex',gap:8,marginBottom:8}},
+      ...['1h','6h','24h'].map(iv=>
+        h('button',{key:iv,onClick:()=>setIntervalo(iv),style:{flex:1,padding:'8px',background:intervalo===iv?'rgba(212,168,67,0.15)':'#161616',color:intervalo===iv?'#D4A843':'#666',border:`1px solid ${intervalo===iv?'rgba(212,168,67,0.3)':'#222'}`,borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},
+          `A cada ${iv}`)
+      )
+    ):null,
+    ultima?h('div',{style:S.footer},`Última verificação: ${ultima.toLocaleTimeString('pt-BR')} — ${ultima.toLocaleDateString('pt-BR')}`):null
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
